@@ -50,17 +50,24 @@
 
 ```mermaid
 flowchart TD
-    A[Offer Collection Node] --> B[Market Research Node]
-    B --> C[Cost of Living Adjustment Node]
-    C --> D[Market Benchmarking Node]
-    D --> E[Preference Scoring Node]
-    E --> F[AI Analysis Node]
-    F --> G[Visualization Preparation Node]
-    G --> H[Report Generation Node]
+    A[Offer Collection Node<br/>Regular] --> B[Market Research Node<br/>AsyncBatchNode]
+    B --> C[Cost of Living Adjustment Node<br/>BatchNode]
+    C --> D[Market Benchmarking Node<br/>AsyncBatchNode]
+    D --> E[Preference Scoring Node<br/>BatchNode]
+    E --> F[AI Analysis Node<br/>AsyncNode]
+    F --> G[Visualization Preparation Node<br/>Regular]
+    G --> H[Report Generation Node<br/>Regular]
     
-    I[Batch Processing Flow] --> J[Process Multiple Offers]
-    J --> K[Aggregate Results]
-    K --> L[Final Rankings]
+    subgraph "Async Processing"
+        B -.->|Parallel I/O| B1[Web Research APIs]
+        D -.->|Parallel I/O| D1[Market Data APIs]
+        F -.->|Async LLM| F1[AI Analysis Calls]
+    end
+    
+    subgraph "Batch Processing"
+        C -.->|Per Offer| C1[COL Calculations]
+        E -.->|Per Offer| E1[Score Calculations]
+    end
 ```
 
 ## Utility Functions
@@ -157,11 +164,11 @@ shared = {
 
 2. **Market Research Node**
    - *Purpose*: Gather real-time market intelligence for each company using AI agents
-   - *Type*: Batch Node (processes multiple offers)
+   - *Type*: AsyncBatchNode (processes multiple offers with async I/O)
    - *Steps*:
-     - *prep*: Read offers from shared store, extract company and position details
-     - *exec*: Use AI agents to research each company (culture, recent news, employee satisfaction)
-     - *post*: Enrich offer data with market research insights
+     - *prep_async*: Read offers from shared store, extract company and position details
+     - *exec_async*: Use AI agents to research each company (culture, recent news, employee satisfaction) - async I/O calls
+     - *post_async*: Enrich offer data with market research insights
 
 3. **Cost of Living Adjustment Node**
    - *Purpose*: Normalize compensation based on location cost differences
@@ -173,27 +180,27 @@ shared = {
 
 4. **Market Benchmarking Node**
    - *Purpose*: Compare each offer against industry market data
-   - *Type*: Batch Node
+   - *Type*: AsyncBatchNode (async API calls for market data)
    - *Steps*:
-     - *prep*: Read offers and extract position/location/experience data
-     - *exec*: Fetch market data and calculate percentiles for each offer
-     - *post*: Add market_percentile and competitive_analysis to each offer
+     - *prep_async*: Read offers and extract position/location/experience data
+     - *exec_async*: Fetch market data and calculate percentiles for each offer - async I/O calls
+     - *post_async*: Add market_percentile and competitive_analysis to each offer
 
 5. **Preference Scoring Node**
    - *Purpose*: Calculate personalized scores based on user-defined weightings
-   - *Type*: Regular Node
+   - *Type*: BatchNode (processes each offer individually)
    - *Steps*:
      - *prep*: Read offers and user preferences from shared store
-     - *exec*: Apply scoring algorithm with weighted factors
+     - *exec*: Apply scoring algorithm with weighted factors for single offer
      - *post*: Update offers with total_score and factor_breakdown
 
 6. **AI Analysis Node**
    - *Purpose*: Generate comprehensive AI-powered recommendations and risk assessments
-   - *Type*: Regular Node
+   - *Type*: AsyncNode (async LLM calls)
    - *Steps*:
-     - *prep*: Read all processed offer data and user preferences
-     - *exec*: Generate detailed analysis using LLM with career trajectory predictions
-     - *post*: Store ai_analysis for each offer and overall recommendations
+     - *prep_async*: Read all processed offer data and user preferences
+     - *exec_async*: Generate detailed analysis using LLM with career trajectory predictions - async LLM calls
+     - *post_async*: Store ai_analysis for each offer and overall recommendations
 
 7. **Visualization Preparation Node**
    - *Purpose*: Format data for interactive charts and comparison tables
@@ -248,40 +255,93 @@ class OfferBatchNode(BatchNode):
 
 ### Async Integration
 
-For external API calls (market data, web research):
+For external API calls (market data, web research), we use AsyncBatchNode and AsyncNode:
 
 ```python
-class AsyncMarketResearchNode(AsyncNode):
-    async def async_exec(self, company_data):
-        # Parallel API calls to multiple data sources
+class AsyncMarketResearchNode(AsyncBatchNode):
+    async def prep_async(self, shared):
+        # Extract company data for research
+        return [{"company": offer["company"], "position": offer["position"]} 
+                for offer in shared["offers"]]
+    
+    async def exec_async(self, company_data):
+        # Process single company with parallel API calls
         # NO error handling - trust PocketFlow's mechanisms
         market_data = await self.fetch_market_data(company_data)
         company_info = await self.research_company(company_data)
         return {"market": market_data, "company": company_info}
+    
+    async def post_async(self, shared, prep_res, exec_res_list):
+        # Update offers with research data
+        for i, research in enumerate(exec_res_list):
+            shared["offers"][i]["research"] = research
 ```
 
-### Node Implementation Pattern
+### Node Implementation Patterns
 
-**Correct Pattern:**
+**BatchNode Pattern (for processing multiple offers):**
 ```python
-class MarketResearchNode(Node):
+class PreferenceScoringNode(BatchNode):
     def prep(self, shared):
-        # Only read from shared store
-        return shared["offers"]
+        # Return iterable - each offer with preferences
+        return [(offer, shared["user_preferences"]) for offer in shared["offers"]]
     
-    def exec(self, offers):
+    def exec(self, offer_with_prefs):
+        # Process single (offer, preferences) tuple
         # Never access shared store here
         # Never use try/except here
-        # Process full data without cropping
-        research_results = []
-        for offer in offers:
-            research = self.research_company(offer["company"])
-            research_results.append(research)
-        return research_results
+        offer, preferences = offer_with_prefs
+        score = calculate_offer_score(offer, preferences)
+        return score
     
-    def post(self, shared, prep_res, exec_res):
-        # Only write to shared store
-        for i, research in enumerate(exec_res):
-            shared["offers"][i]["market_research"] = research
+    def post(self, shared, prep_res, exec_res_list):
+        # exec_res_list contains scores for all offers
+        for i, score in enumerate(exec_res_list):
+            shared["offers"][i]["score_data"] = score
+```
+
+**AsyncBatchNode Pattern (for I/O-bound batch operations):**
+```python
+class MarketResearchNode(AsyncBatchNode):
+    async def prep_async(self, shared):
+        # Return iterable of research items
+        return [{"company": offer["company"], "offer_id": offer["id"]} 
+                for offer in shared["offers"]]
+    
+    async def exec_async(self, research_item):
+        # Process single research item with async I/O
+        # Never access shared store here
+        # Never use try/except here
+        research = await research_company_async(research_item["company"])
+        return {"offer_id": research_item["offer_id"], "research": research}
+    
+    async def post_async(self, shared, prep_res, exec_res_list):
+        # Update offers with research data
+        research_lookup = {r["offer_id"]: r["research"] for r in exec_res_list}
+        for offer in shared["offers"]:
+            if offer["id"] in research_lookup:
+                offer["research"] = research_lookup[offer["id"]]
+```
+
+**AsyncNode Pattern (for comprehensive async operations):**
+```python
+class AIAnalysisNode(AsyncNode):
+    async def prep_async(self, shared):
+        # Read all processed data
+        return {
+            "offers": shared["offers"],
+            "preferences": shared["user_preferences"]
+        }
+    
+    async def exec_async(self, data):
+        # Generate comprehensive analysis with async LLM calls
+        # Never access shared store here
+        # Never use try/except here
+        analysis = await generate_ai_analysis_async(data["offers"], data["preferences"])
+        return analysis
+    
+    async def post_async(self, shared, prep_res, exec_res):
+        # Store analysis results
+        shared["ai_analysis"] = exec_res
 ```
 

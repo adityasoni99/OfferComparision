@@ -27,7 +27,7 @@ from nodes import (
     VisualizationPreparationNode,
     ReportGenerationNode,
 )
-from pocketflow import Flow
+from pocketflow import Flow, AsyncFlow
 from utils.call_llm import get_provider_info
 
 
@@ -74,7 +74,7 @@ def health() -> Dict[str, Any]:
     return {"status": "ok", "providers": provider_info}
 
 
-def _build_flow() -> Flow:
+def _build_flow() -> AsyncFlow:
     market_research = MarketResearchNode()
     col_adjustment = COLAdjustmentNode()
     market_benchmarking = MarketBenchmarkingNode()
@@ -90,17 +90,17 @@ def _build_flow() -> Flow:
     ai_analysis >> visualization_prep
     visualization_prep >> report_generation
 
-    return Flow(start=market_research)
+    return AsyncFlow(start=market_research)
 
 
-def _run_analysis(shared: Dict[str, Any]) -> Dict[str, Any]:
+async def _run_analysis(shared: Dict[str, Any]) -> Dict[str, Any]:
     flow = _build_flow()
-    flow.run(shared)
+    await flow.run_async(shared)
     return shared
 
 
 @app.get("/api/demo", response_model=AnalyzeResponse)
-def run_demo() -> AnalyzeResponse:
+async def run_demo() -> AnalyzeResponse:
     shared = get_sample_offers()
 
     # Ensure totals are present
@@ -108,7 +108,7 @@ def run_demo() -> AnalyzeResponse:
         offer.setdefault("total_compensation", offer.get("base_salary", 0) + offer.get("equity", 0) + offer.get("bonus", 0))
 
     try:
-        result = _run_analysis(shared)
+        result = await _run_analysis(shared)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -122,7 +122,7 @@ def run_demo() -> AnalyzeResponse:
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
-def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
+async def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     if not req.offers:
         raise HTTPException(status_code=400, detail="Offers list cannot be empty")
 
@@ -141,7 +141,7 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     }
 
     try:
-        result = _run_analysis(shared)
+        result = await _run_analysis(shared)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

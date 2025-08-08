@@ -3,15 +3,17 @@ OfferCompare Pro - Node Implementations
 Complete set of nodes for intelligent job offer analysis and comparison
 """
 
-from pocketflow import Node, BatchNode
-from utils.call_llm import call_llm, call_llm_structured
-from utils.web_research import research_company, get_market_sentiment
+from pocketflow import Node, BatchNode, AsyncNode, AsyncBatchNode
+from utils.call_llm import call_llm, call_llm_structured, call_llm_async, call_llm_structured_async
+from utils.web_research import research_company, get_market_sentiment, research_company_async, get_market_sentiment_async
 from utils.col_calculator import calculate_col_adjustment, get_location_insights
-from utils.market_data import get_compensation_insights, calculate_market_percentile, ai_market_analysis
+from utils.market_data import (get_compensation_insights, calculate_market_percentile, ai_market_analysis,
+                              get_compensation_insights_async, calculate_market_percentile_async, ai_market_analysis_async)
 from utils.scoring import calculate_offer_score, compare_offers, customize_weights
 from utils.viz_formatter import create_visualization_package
 from utils.company_db import get_company_data, enrich_company_data
 import json
+import asyncio
 
 class OfferCollectionNode(Node):
     """
@@ -138,13 +140,13 @@ class OfferCollectionNode(Node):
         except ValueError:
             return default if default is not None else 0
 
-class MarketResearchNode(BatchNode):
+class MarketResearchNode(AsyncBatchNode):
     """
     Gather comprehensive market intelligence for each company using AI agents.
-    Processes multiple offers in batch for efficiency.
+    Uses AsyncBatchNode for efficient parallel I/O operations.
     """
     
-    def prep(self, shared):
+    async def prep_async(self, shared):
         """Extract company and position details for research."""
         offers = shared.get("offers", [])
         research_items = []
@@ -159,39 +161,35 @@ class MarketResearchNode(BatchNode):
         
         return research_items
     
-    def exec(self, item):
-        """Conduct AI-powered research. Accepts a single item or a list of items; always returns a list."""
-        def process(single_item):
-            print(f"\n🔍 Conducting market research for {single_item['company']}...")
-            company_research = research_company(single_item["company"], single_item["position"])
-            market_sentiment = get_market_sentiment(single_item["company"], single_item["position"])
-            company_db_data = get_company_data(single_item["company"])
-            enriched_data = enrich_company_data(single_item["company"], {
-                "position_context": single_item["position"],
-                "location": single_item["location"]
-            })
-            return {
-                "offer_id": single_item["offer_id"],
-                "company_research": company_research,
-                "market_sentiment": market_sentiment,
-                "company_db_data": company_db_data,
-                "enriched_data": enriched_data
-            }
+    async def exec_async(self, research_item):
+        """
+        Conduct AI-powered research for a single company.
+        Uses async I/O for parallel processing.
+        """
+        print(f"\n🔍 Conducting market research for {research_item['company']}...")
         
-        if isinstance(item, list):
-            return [process(i) for i in item]
-        return [process(item)]
+        # Parallel async calls for research data
+        company_research = await research_company_async(research_item["company"], research_item["position"])
+        market_sentiment = await get_market_sentiment_async(research_item["company"], research_item["position"])
+        
+        # These are local operations, so keep sync for now
+        company_db_data = get_company_data(research_item["company"])
+        enriched_data = enrich_company_data(research_item["company"], {
+            "position_context": research_item["position"],
+            "location": research_item["location"]
+        })
+        
+        return {
+            "offer_id": research_item["offer_id"],
+            "company_research": company_research,
+            "market_sentiment": market_sentiment,
+            "company_db_data": company_db_data,
+            "enriched_data": enriched_data
+        }
     
-    def post(self, shared, prep_res, exec_res):
+    async def post_async(self, shared, prep_res, exec_res_list):
         """Enrich offers with research data."""
-        # Flatten in case exec returned nested lists and create lookup
-        flat_results = []
-        for r in exec_res:
-            if isinstance(r, list):
-                flat_results.extend(r)
-            else:
-                flat_results.append(r)
-        research_lookup = {r.get("offer_id"): r for r in flat_results if isinstance(r, dict)}
+        research_lookup = {r.get("offer_id"): r for r in exec_res_list if isinstance(r, dict)}
         
         # Enrich each offer with research data
         for offer in shared["offers"]:
@@ -281,13 +279,13 @@ class COLAdjustmentNode(BatchNode):
         print("✅ Cost of living adjustments completed")
         return "default"
 
-class MarketBenchmarkingNode(BatchNode):
+class MarketBenchmarkingNode(AsyncBatchNode):
     """
     Compare each offer against industry market standards.
-    Provides percentile analysis and competitiveness assessment.
+    Uses AsyncBatchNode for parallel market data API calls.
     """
     
-    def prep(self, shared):
+    async def prep_async(self, shared):
         """Extract offer data for market comparison."""
         offers = shared.get("offers", [])
         benchmark_items = []
@@ -307,63 +305,53 @@ class MarketBenchmarkingNode(BatchNode):
         
         return benchmark_items
     
-    def exec(self, item):
-        """Perform market benchmarking. Accepts a single item or a list; always returns a list with alias keys for tests."""
-        def process(single_item):
-            print(f"\n📊 Performing market benchmarking analysis for {single_item['company']} {single_item['position']}...")
-            compensation_insights = get_compensation_insights(
-                single_item["position"],
-                single_item["base_salary"],
-                single_item["equity"],
-                single_item["bonus"],
-                single_item["location"]
-            )
-            base_percentile = calculate_market_percentile(
-                single_item["base_salary"],
-                single_item["position"],
-                single_item["location"]
-            )
-            total_percentile = calculate_market_percentile(
-                single_item["total_compensation"],
-                single_item["position"],
-                single_item["location"]
-            )
-            ai_analysis = ai_market_analysis(
-                single_item["position"],
-                single_item["company"],
-                single_item["location"],
-                {
-                    "base_salary": single_item["base_salary"],
-                    "equity_value": single_item["equity"],
-                    "bonus": single_item["bonus"],
-                    "total_compensation": single_item["total_compensation"]
-                }
-            )
-            # Include alias keys expected by tests
-            return {
-                "offer_id": single_item["offer_id"],
-                "compensation_insights": compensation_insights,
-                "market_insights": compensation_insights,
-                "base_percentile": base_percentile,
-                "market_analysis": base_percentile,
-                "total_percentile": total_percentile,
-                "total_comp_analysis": total_percentile,
-                "ai_analysis": ai_analysis
-            }
+    async def exec_async(self, benchmark_item):
+        """Perform market benchmarking for a single offer using async calls."""
+        print(f"\n📊 Performing market benchmarking analysis for {benchmark_item['company']} {benchmark_item['position']}...")
         
-        if isinstance(item, list):
-            return [process(i) for i in item]
-        return [process(item)]
+        # Parallel async calls for market data
+        compensation_insights = await get_compensation_insights_async(
+            benchmark_item["position"],
+            benchmark_item["base_salary"],
+            benchmark_item["equity"],
+            benchmark_item["bonus"],
+            benchmark_item["location"]
+        )
+        
+        base_percentile = await calculate_market_percentile_async(
+            benchmark_item["base_salary"],
+            benchmark_item["position"],
+            benchmark_item["location"]
+        )
+        
+        total_percentile = await calculate_market_percentile_async(
+            benchmark_item["total_compensation"],
+            benchmark_item["position"],
+            benchmark_item["location"]
+        )
+        
+        ai_analysis = await ai_market_analysis_async(
+            benchmark_item["position"],
+            benchmark_item["location"],
+            benchmark_item["base_salary"],
+            benchmark_item["years_experience"]
+        )
+        
+        # Include alias keys expected by tests
+        return {
+            "offer_id": benchmark_item["offer_id"],
+            "compensation_insights": compensation_insights,
+            "market_insights": compensation_insights,
+            "base_percentile": base_percentile,
+            "market_analysis": base_percentile,
+            "total_percentile": total_percentile,
+            "total_comp_analysis": total_percentile,
+            "ai_analysis": ai_analysis
+        }
     
-    def post(self, shared, prep_res, exec_res):
+    async def post_async(self, shared, prep_res, exec_res_list):
         """Add market benchmarking data to offers."""
-        flat_results = []
-        for r in exec_res:
-            if isinstance(r, list):
-                flat_results.extend(r)
-            else:
-                flat_results.append(r)
-        benchmark_lookup = {r.get("offer_id"): r for r in flat_results if isinstance(r, dict)}
+        benchmark_lookup = {r.get("offer_id"): r for r in exec_res_list if isinstance(r, dict)}
         
         for offer in shared["offers"]:
             if offer["id"] in benchmark_lookup:
@@ -376,74 +364,66 @@ class MarketBenchmarkingNode(BatchNode):
         print("✅ Market benchmarking completed")
         return "default"
 
-class PreferenceScoringNode(Node):
+class PreferenceScoringNode(BatchNode):
     """
     Calculate personalized scores based on user-defined weightings.
-    Applies custom scoring weights to all factors.
+    Uses BatchNode to process each offer individually with user preferences.
     """
     
     def prep(self, shared):
-        """Prepare offers and user preferences for scoring."""
-        return {
-            "offers": shared.get("offers", []),
-            "user_preferences": shared.get("user_preferences", {})
-        }
+        """Prepare offer-preference pairs for individual scoring."""
+        offers = shared.get("offers", [])
+        user_preferences = shared.get("user_preferences", {})
+        
+        # Return list of (offer, preferences) tuples for batch processing
+        return [(offer, user_preferences) for offer in offers]
     
-    def exec(self, prep_data):
-        """Apply personalized scoring algorithm."""
-        offers = prep_data["offers"]
-        user_preferences = prep_data["user_preferences"]
+    def exec(self, offer_with_prefs):
+        """Calculate score for a single offer with user preferences."""
+        offer, user_preferences = offer_with_prefs
         
-        print(f"\n🎯 Calculating personalized scores...")
+        print(f"\n🎯 Calculating personalized score for {offer.get('company', 'Unknown')}...")
         
-        # Customize weights based on user priorities
+        # Customize weights based on user priorities  
         weights = customize_weights(user_preferences)
         
-        # Calculate scores for each offer
-        scored_offers = []
-        for offer in offers:
-            score_data = calculate_offer_score(offer, user_preferences, weights)
-            scored_offers.append({
-                "offer_id": offer["id"],
-                "score_data": score_data
-            })
-        
-        # Compare and rank offers
-        comparison_results = compare_offers(offers, user_preferences, weights)
+        # Calculate score for this specific offer
+        score_data = calculate_offer_score(offer, user_preferences, weights)
         
         return {
-            "scored_offers": scored_offers,
-            "offers_with_scores": [
-                {**offer, **score_lookup} if (score_lookup := {"score_data": calculate_offer_score(offer, user_preferences, weights)}) else offer
-                for offer in offers
-            ],
-            "comparison_results": comparison_results,
+            "offer_id": offer["id"],
+            "score_data": score_data,
             "weights_used": weights
         }
     
-    def post(self, shared, prep_res, exec_res):
-        """Store scoring results in shared data."""
+    def post(self, shared, prep_res, exec_res_list):
+        """Store scoring results and generate comparison."""
         # Add individual scores to offers
-        score_lookup = {s["offer_id"]: s["score_data"] for s in exec_res["scored_offers"]}
+        score_lookup = {s["offer_id"]: s["score_data"] for s in exec_res_list}
         
         for offer in shared["offers"]:
             if offer["id"] in score_lookup:
                 offer["score_data"] = score_lookup[offer["id"]]
         
-        # Store comparison results
-        shared["comparison_results"] = exec_res["comparison_results"]
-        shared["scoring_weights"] = exec_res["weights_used"]
+        # Generate comparison results using all scored offers
+        user_preferences = shared.get("user_preferences", {})
+        weights = exec_res_list[0]["weights_used"] if exec_res_list else customize_weights(user_preferences)
+        comparison_results = compare_offers(shared["offers"], user_preferences, weights)
+        
+        # Store comparison results and weights
+        shared["comparison_results"] = comparison_results
+        shared["scoring_weights"] = weights
         
         print("✅ Personalized scoring completed")
         return "default"
 
-class AIAnalysisNode(Node):
+class AIAnalysisNode(AsyncNode):
     """
     Generate comprehensive AI-powered recommendations and risk assessments.
     Provides detailed analysis and career trajectory insights.
     """
     
-    def prep(self, shared):
+    async def prep_async(self, shared):
         """Prepare all processed offer data for AI analysis."""
         return {
             "offers": shared.get("offers", []),
@@ -452,8 +432,8 @@ class AIAnalysisNode(Node):
             "scoring_weights": shared.get("scoring_weights", {})
         }
     
-    def exec(self, prep_data):
-        """Generate comprehensive AI analysis."""
+    async def exec_async(self, prep_data):
+        """Generate comprehensive AI analysis using async LLM calls."""
         offers = prep_data["offers"]
         comparison_results = prep_data["comparison_results"]
         user_preferences = prep_data["user_preferences"]
@@ -463,24 +443,24 @@ class AIAnalysisNode(Node):
         # Prepare comprehensive data for AI analysis
         analysis_prompt = self._build_analysis_prompt(offers, comparison_results, user_preferences)
         
-        # Get comprehensive AI analysis
-        ai_analysis = call_llm(
+        # Get comprehensive AI analysis with async LLM call
+        ai_analysis = await call_llm_async(
             analysis_prompt,
             temperature=0.3,
             system_prompt="You are an expert career advisor and compensation analyst providing comprehensive job offer analysis."
         )
         
-        # Generate specific recommendations for each offer
+        # Generate specific recommendations for each offer (async)
         offer_recommendations = []
         for offer in offers:
-            recommendation = self._generate_offer_recommendation(offer, user_preferences)
+            recommendation = await self._generate_offer_recommendation_async(offer, user_preferences)
             offer_recommendations.append({
                 "offer_id": offer["id"],
                 "recommendation": recommendation
             })
         
-        # Generate decision framework
-        decision_framework = self._generate_decision_framework(offers, comparison_results)
+        # Generate decision framework (async)
+        decision_framework = await self._generate_decision_framework_async(offers, comparison_results)
         
         return {
             "comprehensive_analysis": ai_analysis,
@@ -491,7 +471,7 @@ class AIAnalysisNode(Node):
             "recommendation": offer_recommendations[0]["recommendation"] if offer_recommendations else ""
         }
     
-    def post(self, shared, prep_res, exec_res):
+    async def post_async(self, shared, prep_res, exec_res):
         """Store AI analysis results."""
         # Add recommendations to individual offers
         rec_lookup = {r["offer_id"]: r["recommendation"] for r in exec_res["offer_recommendations"]}
@@ -545,8 +525,8 @@ class AIAnalysisNode(Node):
         
         return prompt
     
-    def _generate_offer_recommendation(self, offer, user_preferences):
-        """Generate specific recommendation for an individual offer."""
+    async def _generate_offer_recommendation_async(self, offer, user_preferences):
+        """Generate specific recommendation for an individual offer using async LLM."""
         prompt = f"""
         Provide a focused recommendation for this specific offer:
         
@@ -563,10 +543,10 @@ class AIAnalysisNode(Node):
         Provide 2-3 key reasons for your recommendation.
         """
         
-        return call_llm(prompt, temperature=0.3)
+        return await call_llm_async(prompt, temperature=0.3)
     
-    def _generate_decision_framework(self, offers, comparison_results):
-        """Generate a decision-making framework."""
+    async def _generate_decision_framework_async(self, offers, comparison_results):
+        """Generate a decision-making framework using async LLM."""
         prompt = f"""
         Create a decision framework for choosing between these {len(offers)} offers.
         
@@ -580,7 +560,7 @@ class AIAnalysisNode(Node):
         Keep it practical and actionable.
         """
         
-        return call_llm(prompt, temperature=0.3)
+        return await call_llm_async(prompt, temperature=0.3)
 
 class VisualizationPreparationNode(Node):
     """

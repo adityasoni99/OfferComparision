@@ -472,6 +472,31 @@ def ai_market_analysis(position, company, location, salary_data):
         "location": location
     }
 
+# Async versions for AsyncNode usage
+async def get_market_salary_range_async(position, location="San Francisco, CA"):
+    """Async version of get_market_salary_range for use with AsyncNode."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, get_market_salary_range, position, location)
+
+async def calculate_market_percentile_async(salary, position, location="San Francisco, CA", experience_level=None):
+    """Async version of calculate_market_percentile for use with AsyncNode."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, calculate_market_percentile, salary, position, location, experience_level)
+
+async def get_compensation_insights_async(position, base_salary, equity, bonus, location="San Francisco, CA"):
+    """Async version of get_compensation_insights for use with AsyncNode."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, get_compensation_insights, position, base_salary, equity, bonus, location)
+
+async def ai_market_analysis_async(position, location, salary, experience_years):
+    """Async version of ai_market_analysis for use with AsyncNode."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, ai_market_analysis, position, location, salary, experience_years)
+
 if __name__ == "__main__":
     # Test market data functions
     market_range = get_market_salary_range("Senior Software Engineer", "Seattle, WA")

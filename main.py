@@ -156,7 +156,8 @@ def run_demo_analysis(ask_confirm: bool = True):
         PreferenceScoringNode, AIAnalysisNode, VisualizationPreparationNode,
         ReportGenerationNode
     )
-    from pocketflow import Flow
+    from pocketflow import AsyncFlow
+    import asyncio
     
     # Create demo flow (starting from market research)
     market_research = MarketResearchNode()
@@ -175,14 +176,15 @@ def run_demo_analysis(ask_confirm: bool = True):
     ai_analysis >> visualization_prep
     visualization_prep >> report_generation
     
-    demo_flow = Flow(start=market_research)
+    demo_flow = AsyncFlow(start=market_research)
     
     try:
         print("\n" + "="*60)
-        print("🔄 RUNNING DEMO ANALYSIS")
+        print("🔄 RUNNING DEMO ANALYSIS (ASYNC)")
         print("="*60)
         
-        demo_flow.run(shared)
+        # Run async flow
+        asyncio.run(demo_flow.run_async(shared))
         
         print("\n" + "="*60)
         print("✅ DEMO COMPLETE!")

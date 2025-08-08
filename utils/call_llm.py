@@ -294,3 +294,36 @@ if __name__ == "__main__":
             print(f"❌ Test failed: {e}")
     else:
         print("❌ No API keys found. Please set up your .env file with API keys.")
+
+# Async versions for AsyncNode usage
+async def call_llm_async(prompt: str, model: Optional[str] = None, temperature: float = 0.7,
+                        max_tokens: Optional[int] = None, system_prompt: Optional[str] = None,
+                        provider: Optional[str] = None) -> str:
+    """
+    Async version of call_llm for use with AsyncNode.
+    For now, wraps the sync version but can be enhanced for true async calls.
+    """
+    import asyncio
+    # Run the sync version in an executor for now
+    # TODO: Implement true async clients for each provider
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, 
+        call_llm, 
+        prompt, model, temperature, max_tokens, system_prompt, provider
+    )
+
+async def call_llm_structured_async(prompt: str, response_format: Optional[Dict] = None,
+                                   model: Optional[str] = None, temperature: float = 0.7,
+                                   max_tokens: Optional[int] = None, system_prompt: Optional[str] = None,
+                                   provider: Optional[str] = None) -> str:
+    """
+    Async version of call_llm_structured for use with AsyncNode.
+    """
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        call_llm_structured,
+        prompt, response_format, model, temperature, max_tokens, system_prompt, provider
+    )

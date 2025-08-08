@@ -178,6 +178,19 @@ def get_market_sentiment(company_name, position=None):
         "analysis_timestamp": "2024-01-01"
     }
 
+# Async versions for AsyncNode usage
+async def research_company_async(company_name, position=None, research_topics=None):
+    """Async version of research_company for use with AsyncNode."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, research_company, company_name, position, research_topics)
+
+async def get_market_sentiment_async(company_name, position=None):
+    """Async version of get_market_sentiment for use with AsyncNode."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, get_market_sentiment, company_name, position)
+
 if __name__ == "__main__":
     # Test the research agent
     research_data = research_company("Google", "Senior Software Engineer")

@@ -3,7 +3,7 @@ OfferCompare Pro - Main Flow Implementation
 Connects all 8 nodes for comprehensive job offer analysis and comparison
 """
 
-from pocketflow import Flow
+from pocketflow import Flow, AsyncFlow
 from nodes import (
     OfferCollectionNode,
     MarketResearchNode,
@@ -17,35 +17,35 @@ from nodes import (
 
 def create_offer_comparison_flow():
     """
-    Create and return the complete OfferCompare Pro flow.
+    Create and return the complete OfferCompare Pro flow using AsyncFlow.
     
     Flow Sequence:
-    1. OfferCollection → Collect user offers and preferences
-    2. MarketResearch → AI-powered company intelligence (Batch)
-    3. COLAdjustment → Location-based compensation normalization (Batch)
-    4. MarketBenchmarking → Industry comparison and percentiles (Batch)
-    5. PreferenceScoring → Personalized weighted scoring
-    6. AIAnalysis → Comprehensive AI recommendations
-    7. VisualizationPreparation → Interactive chart data
-    8. ReportGeneration → Final comprehensive report
+    1. OfferCollection → Collect user offers and preferences (Regular Node)
+    2. MarketResearch → AI-powered company intelligence (AsyncBatchNode)
+    3. COLAdjustment → Location-based compensation normalization (BatchNode)
+    4. MarketBenchmarking → Industry comparison and percentiles (AsyncBatchNode)
+    5. PreferenceScoring → Personalized weighted scoring (BatchNode)
+    6. AIAnalysis → Comprehensive AI recommendations (AsyncNode)
+    7. VisualizationPreparation → Interactive chart data (Regular Node)
+    8. ReportGeneration → Final comprehensive report (Regular Node)
     
     Returns:
-        Flow: Complete OfferCompare Pro workflow
+        AsyncFlow: Complete OfferCompare Pro workflow with async support
     """
     
-    print("🚀 Initializing OfferCompare Pro Flow...")
+    print("🚀 Initializing OfferCompare Pro AsyncFlow...")
     
     # Create all nodes
     offer_collection = OfferCollectionNode()
-    market_research = MarketResearchNode()
-    col_adjustment = COLAdjustmentNode()
-    market_benchmarking = MarketBenchmarkingNode()
-    preference_scoring = PreferenceScoringNode()
-    ai_analysis = AIAnalysisNode()
-    visualization_prep = VisualizationPreparationNode()
-    report_generation = ReportGenerationNode()
+    market_research = MarketResearchNode()          # AsyncBatchNode
+    col_adjustment = COLAdjustmentNode()            # BatchNode
+    market_benchmarking = MarketBenchmarkingNode()  # AsyncBatchNode
+    preference_scoring = PreferenceScoringNode()    # BatchNode
+    ai_analysis = AIAnalysisNode()                  # AsyncNode
+    visualization_prep = VisualizationPreparationNode()  # Regular Node
+    report_generation = ReportGenerationNode()     # Regular Node
     
-    # Connect nodes in sequence (following design patterns)
+    # Connect nodes in sequence (AsyncFlow supports mixed sync/async nodes)
     offer_collection >> market_research
     market_research >> col_adjustment
     col_adjustment >> market_benchmarking
@@ -54,12 +54,10 @@ def create_offer_comparison_flow():
     ai_analysis >> visualization_prep
     visualization_prep >> report_generation
     
-    # Create flow and set start node as instance attribute to satisfy tests
-    flow = Flow()
-    # Shadow potential Flow.start method with Node instance so tests see a Node
-    flow.start = offer_collection
+    # Create AsyncFlow to handle async nodes
+    flow = AsyncFlow(start=offer_collection)
     
-    print("✅ OfferCompare Pro Flow initialized successfully!")
+    print("✅ OfferCompare Pro AsyncFlow initialized successfully!")
     return flow
 
 def create_demo_flow():
