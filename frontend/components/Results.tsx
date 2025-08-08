@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Bar, Radar, Scatter, Doughnut } from 'react-chartjs-2'
 import { motion } from 'framer-motion'
 import {
@@ -39,25 +39,31 @@ export default function Results({ data }: { data: any }) {
 
   const ranked = data?.comparison_results?.ranked_offers || []
 
-  const tabs = useMemo(() => (
-    [
+  const tabs = useMemo(
+    () => [
       { key: 'summary', label: 'Summary' },
       { key: 'charts', label: 'Charts' },
       { key: 'breakdowns', label: 'Compensation' },
       { key: 'table', label: 'Comparison Table' },
       { key: 'timeline', label: 'Timeline' },
-    ]
-  ), [])
+    ],
+    []
+  )
 
-  const [active, setActive] = ((): [string, (k: string) => void] => {
-    if (typeof window !== 'undefined') {
+  const [active, setActive] = useState<string>('summary')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const applyHash = () => {
       const urlHash = window.location.hash.replace('#', '')
-      if (urlHash && tabs.some(t => t.key === urlHash)) {
-        return [urlHash, (k: string) => { window.location.hash = k }] as any
+      if (urlHash && tabs.some((t) => t.key === urlHash)) {
+        setActive(urlHash)
       }
     }
-    return ['summary', (k: string) => { if (typeof window !== 'undefined') window.location.hash = k }] as any
-  })()
+    applyHash()
+    window.addEventListener('hashchange', applyHash)
+    return () => window.removeEventListener('hashchange', applyHash)
+  }, [tabs])
 
   const onSave = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -76,7 +82,12 @@ export default function Results({ data }: { data: any }) {
           {tabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => setActive(t.key)}
+              onClick={() => {
+                setActive(t.key)
+                if (typeof window !== 'undefined') {
+                  window.location.hash = t.key
+                }
+              }}
               className={`px-4 py-2 rounded-lg border ${active === t.key ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800/60 text-slate-200 border-slate-700 hover:bg-slate-700/60'}`}
             >
               {t.label}

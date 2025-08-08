@@ -4,6 +4,7 @@ Formats offer comparison data for interactive visualizations
 """
 
 import json
+import re
 from typing import Dict, List, Any
 import colorsys
 
@@ -413,9 +414,9 @@ def format_comparison_table(offers_data):
             offer.get("position", "—"),
             offer.get("location", "—"),
             f"{offer.get('total_score', 0):.1f}",
-            f"${offer_data.get('base_salary', 0):,}",
-            f"${offer_data.get('total_compensation', offer_data.get('base_salary', 0) + offer_data.get('equity', 0) + offer_data.get('bonus', 0)):,}",
-            f"${offer_data.get('equity', 0):,}",
+            f"${int(offer_data.get('base_salary', 0)):,}",
+            f"${int(offer_data.get('total_compensation', offer_data.get('base_salary', 0) + offer_data.get('equity', 0) + offer_data.get('bonus', 0))):,}",
+            f"${int(offer_data.get('equity', 0)):,}",
             f"{scores.get('work_life_balance', 0):.0f}",
             f"{scores.get('career_growth', 0):.0f}",
             f"{scores.get('company_culture', 0):.0f}"
@@ -445,9 +446,17 @@ def _find_best_values(rows, offers_data):
     
     # Base Salary (highest)
     salary_col = 5
-    max_salary = max(int(row[salary_col].replace("$", "").replace(",", "")) for row in rows)
+    def _num(s: str) -> float:
+        # Extract numeric, allow decimals
+        val = re.sub(r"[^0-9.\-]", "", s)
+        try:
+            return float(val)
+        except Exception:
+            return 0.0
+
+    max_salary = max(_num(row[salary_col]) for row in rows)
     for i, row in enumerate(rows):
-        if int(row[salary_col].replace("$", "").replace(",", "")) == max_salary:
+        if _num(row[salary_col]) == max_salary:
             best_indices[f"{i},{salary_col}"] = "highest_value"
     
     return best_indices
