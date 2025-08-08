@@ -5,6 +5,7 @@ Intelligent job offer analysis and comparison system
 
 import os
 import sys
+import argparse
 from flow import create_offer_comparison_flow, get_sample_offers
 from utils.call_llm import get_provider_info
 import json
@@ -19,6 +20,21 @@ def main():
     3. Help and documentation
     """
     
+    # Lightweight CLI flags (non-interactive paths)
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--demo", action="store_true", help="Run non-interactive demo with sample data")
+    parser.add_argument("--help-cli", action="store_true", help="Show CLI help and exit")
+    args, _ = parser.parse_known_args()
+
+    if args.help_cli:
+        print("Usage: python main.py [--demo]")
+        print("  --demo      Run non-interactive demo using sample data")
+        sys.exit(0)
+
+    # Non-interactive demo path
+    if args.demo:
+        return run_demo_analysis(ask_confirm=False)
+
     print("\n" + "="*80)
     print("🎯 WELCOME TO OFFERCOMPARE PRO")
     print("   Intelligent Job Offer Analysis & Decision Support")
@@ -51,6 +67,7 @@ def main():
     print("4. 🧪 Test Utilities")
     print("5. ⚙️ Configuration & Setup")
     print("6. ❌ Exit")
+    print("\n(Or run 'python main.py --demo' for a non-interactive demo)")
     
     choice = input("\nEnter your choice (1-6): ").strip()
     
@@ -115,8 +132,8 @@ def run_full_analysis():
         if "API" in str(e):
             print("💡 Tip: Make sure your API keys are properly configured in .env file")
 
-def run_demo_analysis():
-    """Run demo analysis with sample data."""
+def run_demo_analysis(ask_confirm: bool = True):
+    """Run demo analysis with sample data. If ask_confirm is False, runs non-interactively."""
     
     print("\n📊 Running Demo Analysis with Sample Data...")
     print("This showcases the full capabilities with pre-loaded offers.")
@@ -128,9 +145,10 @@ def run_demo_analysis():
     for offer in shared['offers']:
         print(f"  • {offer['company']} - {offer['position']} (${offer['base_salary']:,})")
     
-    proceed = input("\nProceed with demo analysis? (y/n): ").lower()
-    if proceed != 'y':
-        return main()
+    if ask_confirm:
+        proceed = input("\nProceed with demo analysis? (y/n): ").lower()
+        if proceed != 'y':
+            return main()
     
     # Create flow (skip offer collection for demo)
     from nodes import (

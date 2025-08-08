@@ -42,14 +42,30 @@ OfferCompare Pro is an intelligent job offer analysis platform that helps profes
    cd OfferCompare
    ```
 
-2. **Install dependencies:**
+2. **Create and activate Conda env (recommended):**
+   ```bash
+   conda env create -f environment.yml
+   conda activate offercompare-pro
+   ```
+
+   Or create a venv:
+   ```bash
+   python -m venv .venv && source .venv/bin/activate
+   ```
+
+3. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Set up your OpenAI API key:**
+4. **Set up your AI provider API key(s):**
    ```bash
-   export OPENAI_API_KEY='your-api-key-here'
+   # One or more of the following
+   export GEMINI_API_KEY='your-gemini-key'
+   export OPENAI_API_KEY='your-openai-key'
+   export ANTHROPIC_API_KEY='your-claude-key'
+   # Optional default provider
+   export DEFAULT_AI_PROVIDER=gemini
    ```
 
 4. **Run OfferCompare Pro:**
@@ -76,8 +92,12 @@ python main.py
 ### 2. Quick Demo
 
 ```bash
+# Non-interactive
+python main.py --demo
+
+# Interactive
 python main.py
-# Select option 2: Quick Demo with Sample Data
+# Then select option 2
 ```
 
 See the full system in action with pre-loaded Google, Microsoft, and Stripe offers.
@@ -195,7 +215,19 @@ Following **PocketFlow Best Practices** from production experience:
 ### Performance & Scalability
 - **Batch Processing** - Efficient multi-offer analysis
 - **Async Operations** - Parallel API calls for speed
-- **Caching Layer** - Optimized repeated queries
+- **Caching Layer** - Optimized repeated queries (optional)
+
+#### Enable caching
+```bash
+export OFFERCOMPARE_ENABLE_CACHE=1
+export OFFERCOMPARE_CACHE_TTL=86400  # seconds
+```
+
+Cache directory can be set with `OFFERCOMPARE_CACHE_DIR` (defaults to `.cache/`).
+
+### CI
+
+GitHub Actions runs tests on every push/PR to `main` via `.github/workflows/ci.yml`.
 - **Modular Architecture** - Easy to extend and maintain
 
 ## 🤝 Contributing
