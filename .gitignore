@@ -1,0 +1,48 @@
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+.env
+.env.*
+.envrc
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ipynb_checkpoints/
+pytest_cache/
+.coverage.*
+.cache/
+pip-wheel-metadata/
+
+# IDE
+.vscode/
+.idea/
+
+# Node
+node_modules/
+
+# Conda
+.conda/
+conda_env/
+env/
+environment.lock.yml
+
+# Project outputs
+reports/
+artifacts/
+outputs/
+
+# Logs
+*.log
+log/
+logs/

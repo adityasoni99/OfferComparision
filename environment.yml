@@ -1,0 +1,43 @@
+name: offercompare-pro
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Python version
+  - python=3.12
+
+  # Core dependencies
+  - pip
+  - numpy>=1.24.0
+  - pandas>=2.0.0
+  
+  # Data science and visualization
+  - matplotlib>=3.7.0
+  - seaborn>=0.12.0
+  
+  # Web and networking
+  - requests>=2.31.0
+  - beautifulsoup4>=4.12.0
+  
+  # Development tools
+  - pytest>=7.4.0
+  - black>=23.0.0
+  - flake8>=6.0.0
+  
+  # Documentation
+  - mkdocs>=1.5.0
+  
+  # Additional utilities
+  - python-dotenv>=1.0.0
+  - pydantic>=2.0.0
+  - jsonschema>=4.17.0
+  
+  # Install via pip (not available in conda)
+  - pip:
+    - pocketflow>=0.0.1
+    - openai>=1.0.0
+    - google-generativeai>=0.3.0
+    - anthropic>=0.7.0
+    - typing-extensions>=4.5.0
+    - pytest-cov>=4.1.0
+    - mkdocs-material>=9.0.0 

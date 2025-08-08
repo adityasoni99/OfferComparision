@@ -1,0 +1,277 @@
+"""
+Enhanced LLM Interface - Multi-provider support
+Supports OpenAI GPT, Google Gemini, and Anthropic Claude with automatic fallback
+"""
+
+import os
+import json
+from typing import Optional, Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Available AI providers
+AI_PROVIDERS = {
+    "openai": {
+        "name": "OpenAI GPT",
+        "env_key": "OPENAI_API_KEY",
+        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
+    },
+    "gemini": {
+        "name": "Google Gemini",
+        "env_key": "GEMINI_API_KEY", 
+        "models": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+    },
+    "anthropic": {
+        "name": "Anthropic Claude",
+        "env_key": "ANTHROPIC_API_KEY",
+        "models": ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"]
+    }
+}
+
+def get_available_providers():
+    """Get list of available AI providers based on API keys."""
+    available = []
+    for provider_id, config in AI_PROVIDERS.items():
+        if os.environ.get(config["env_key"]):
+            available.append(provider_id)
+    return available
+
+def get_default_provider():
+    """Get the default AI provider from environment or first available."""
+    # Check environment setting
+    default = os.environ.get("DEFAULT_AI_PROVIDER", "").lower()
+    if default in AI_PROVIDERS and os.environ.get(AI_PROVIDERS[default]["env_key"]):
+        return default
+    
+    # Use first available provider
+    available = get_available_providers()
+    if available:
+        return available[0]
+    
+    return None
+
+def call_llm_openai(prompt: str, model: str = "gpt-4o", temperature: float = 0.7, 
+                   max_tokens: Optional[int] = None, system_prompt: Optional[str] = None) -> str:
+    """Call OpenAI API."""
+    try:
+        from openai import OpenAI
+        
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        kwargs = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature
+        }
+        
+        if max_tokens:
+            kwargs["max_tokens"] = max_tokens
+        
+        response = client.chat.completions.create(**kwargs)
+        return response.choices[0].message.content
+        
+    except Exception as e:
+        raise Exception(f"OpenAI API error: {str(e)}")
+
+def call_llm_gemini(prompt: str, model: str = "gemini-1.5-flash", temperature: float = 0.7,
+                   max_tokens: Optional[int] = None, system_prompt: Optional[str] = None) -> str:
+    """Call Google Gemini API."""
+    try:
+        import google.generativeai as genai
+        
+        # Configure API key
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        
+        # Create model instance
+        model_instance = genai.GenerativeModel(model)
+        
+        # Combine system prompt and user prompt
+        full_prompt = prompt
+        if system_prompt:
+            full_prompt = f"{system_prompt}\n\n{prompt}"
+        
+        # Configure generation
+        generation_config = {
+            "temperature": temperature,
+        }
+        if max_tokens:
+            generation_config["max_output_tokens"] = max_tokens
+        
+        # Generate response
+        response = model_instance.generate_content(
+            full_prompt,
+            generation_config=generation_config
+        )
+        
+        return response.text
+        
+    except Exception as e:
+        raise Exception(f"Gemini API error: {str(e)}")
+
+def call_llm_anthropic(prompt: str, model: str = "claude-3-5-sonnet-20241022", temperature: float = 0.7,
+                      max_tokens: Optional[int] = None, system_prompt: Optional[str] = None) -> str:
+    """Call Anthropic Claude API."""
+    try:
+        import anthropic
+        
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        
+        kwargs = {
+            "model": model,
+            "max_tokens": max_tokens or 4000,
+            "temperature": temperature,
+            "messages": [{"role": "user", "content": prompt}]
+        }
+        
+        if system_prompt:
+            kwargs["system"] = system_prompt
+        
+        response = client.messages.create(**kwargs)
+        return response.content[0].text
+        
+    except Exception as e:
+        raise Exception(f"Claude API error: {str(e)}")
+
+def call_llm(prompt: str, model: Optional[str] = None, temperature: float = 0.7, 
+            max_tokens: Optional[int] = None, system_prompt: Optional[str] = None,
+            provider: Optional[str] = None) -> str:
+    """
+    Enhanced LLM interface with multi-provider support and automatic fallback.
+    
+    Args:
+        prompt (str): The user prompt
+        model (str): Model to use (optional, will use provider default)
+        temperature (float): Creativity level (0.0-1.0)
+        max_tokens (int): Maximum response length
+        system_prompt (str): Optional system message
+        provider (str): AI provider to use (openai, gemini, anthropic)
+    
+    Returns:
+        str: Model response
+    """
+    
+    # Determine provider to use
+    if not provider:
+        provider = get_default_provider()
+    
+    if not provider:
+        raise Exception("No AI provider available. Please set API keys in .env file.")
+    
+    # Select default model for provider if not specified
+    if not model:
+        model = AI_PROVIDERS[provider]["models"][0]
+    
+    # Route to appropriate provider
+    try:
+        if provider == "openai":
+            return call_llm_openai(prompt, model, temperature, max_tokens, system_prompt)
+        elif provider == "gemini":
+            return call_llm_gemini(prompt, model, temperature, max_tokens, system_prompt)
+        elif provider == "anthropic":
+            return call_llm_anthropic(prompt, model, temperature, max_tokens, system_prompt)
+        else:
+            raise Exception(f"Unknown provider: {provider}")
+            
+    except Exception as e:
+        # Try fallback to another provider
+        available_providers = get_available_providers()
+        if len(available_providers) > 1:
+            fallback_providers = [p for p in available_providers if p != provider]
+            if fallback_providers:
+                print(f"⚠️ {provider} failed, trying {fallback_providers[0]}...")
+                return call_llm(prompt, model, temperature, max_tokens, system_prompt, fallback_providers[0])
+        
+        raise e
+
+def call_llm_structured(prompt: str, model: Optional[str] = None, response_format: Optional[Dict] = None, 
+                       system_prompt: Optional[str] = None, provider: Optional[str] = None) -> str:
+    """
+    Call LLM with structured output (JSON mode).
+    
+    Args:
+        prompt (str): The user prompt
+        model (str): Model to use
+        response_format (dict): Response format specification
+        system_prompt (str): Optional system message
+        provider (str): AI provider to use
+    
+    Returns:
+        str: Structured model response
+    """
+    
+    # Add JSON format instruction to prompt for non-OpenAI providers
+    if not system_prompt:
+        system_prompt = ""
+    
+    if response_format and response_format.get("type") == "json_object":
+        json_instruction = "\n\nPlease respond with valid JSON format only."
+        system_prompt += json_instruction
+        if "json" not in prompt.lower():
+            prompt += "\n\nFormat your response as JSON."
+    
+    return call_llm(
+        prompt, 
+        model=model,
+        temperature=0.3,  # Lower temperature for structured output
+        system_prompt=system_prompt,
+        provider=provider
+    )
+
+def get_provider_info():
+    """Get information about available AI providers."""
+    available = get_available_providers()
+    default = get_default_provider()
+    
+    info = {
+        "available_providers": available,
+        "default_provider": default,
+        "provider_details": {}
+    }
+    
+    for provider_id in available:
+        config = AI_PROVIDERS[provider_id]
+        info["provider_details"][provider_id] = {
+            "name": config["name"],
+            "models": config["models"],
+            "is_default": provider_id == default
+        }
+    
+    return info
+    
+if __name__ == "__main__":
+    # Test the enhanced LLM interface
+    print("🔍 Testing Enhanced LLM Interface...")
+    
+    # Show available providers
+    provider_info = get_provider_info()
+    print(f"\nAvailable providers: {provider_info['available_providers']}")
+    print(f"Default provider: {provider_info['default_provider']}")
+    
+    if provider_info["available_providers"]:
+        # Test basic call
+        try:
+            prompt = "What are the key factors to consider when comparing job offers? Provide 3 key points."
+            print(f"\nTesting with prompt: {prompt}")
+            response = call_llm(prompt)
+            print(f"✅ Response received: {response[:100]}...")
+            
+            # Test structured output
+            structured_prompt = """
+            List 3 key factors for job offer comparison in JSON format:
+            {"factors": [{"name": "factor name", "importance": "high/medium/low", "description": "brief description"}]}
+            """
+            print(f"\nTesting structured output...")
+            structured_response = call_llm_structured(structured_prompt, response_format={"type": "json_object"})
+            print(f"✅ Structured response: {structured_response[:100]}...")
+            
+        except Exception as e:
+            print(f"❌ Test failed: {e}")
+    else:
+        print("❌ No API keys found. Please set up your .env file with API keys.")
