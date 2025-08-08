@@ -7,6 +7,8 @@ import os
 import json
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
+from .config import get_config
+from .cache import cached_call
 
 # Load environment variables
 load_dotenv()
@@ -21,7 +23,7 @@ AI_PROVIDERS = {
     "gemini": {
         "name": "Google Gemini",
         "env_key": "GEMINI_API_KEY", 
-        "models": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+        "models": ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro"]
     },
     "anthropic": {
         "name": "Anthropic Claude",
@@ -170,6 +172,23 @@ def call_llm(prompt: str, model: Optional[str] = None, temperature: float = 0.7,
     
     # Route to appropriate provider
     try:
+        config = get_config()
+        cache_enabled = config.enable_cache
+        ttl = config.cache_ttl_seconds
+        cache_key_parts = ["llm", provider, model, temperature, max_tokens, system_prompt or "", prompt]
+        
+        def _dispatch():
+            if provider == "openai":
+                return call_llm_openai(prompt, model, temperature, max_tokens, system_prompt)
+            elif provider == "gemini":
+                return call_llm_gemini(prompt, model, temperature, max_tokens, system_prompt)
+            elif provider == "anthropic":
+                return call_llm_anthropic(prompt, model, temperature, max_tokens, system_prompt)
+            else:
+                raise Exception(f"Unknown provider: {provider}")
+
+        if cache_enabled:
+            return cached_call("llm", ttl, cache_key_parts)(_dispatch)()
         if provider == "openai":
             return call_llm_openai(prompt, model, temperature, max_tokens, system_prompt)
         elif provider == "gemini":

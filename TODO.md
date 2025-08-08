@@ -48,6 +48,7 @@ Building an intelligent job offer analysis platform using PocketFlow framework t
 - [x] **Visualization Engine** - Interactive charts and comparisons
 - [x] **Report Templates** - Professional PDF/HTML outputs  
 - [ ] **Caching Layer** - Performance optimization for repeated queries
+  - [x] Basic file-based cache with TTL and env flags
 - [ ] **Configuration Management** - User preferences and settings
 
 ### Phase 7: Production Readiness 🚀
@@ -56,6 +57,7 @@ Building an intelligent job offer analysis platform using PocketFlow framework t
 - [ ] **Performance Optimization** - Benchmarking and tuning
 - [x] **Error Scenarios** - Edge case handling and graceful failures
 - [ ] **CI/CD Pipeline** - Automated testing and deployment ready
+  - [x] Add GitHub Actions workflow to run pytest on push/PR
 
 ## 🎯 Success Metrics
 

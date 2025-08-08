@@ -4,6 +4,8 @@ Uses LLM capabilities to research and synthesize company information
 """
 
 from .call_llm import call_llm, call_llm_structured
+from .config import get_config
+from .cache import cached_call
 import json
 
 def research_company(company_name, position=None, research_topics=None):
@@ -53,11 +55,21 @@ def research_company(company_name, position=None, research_topics=None):
     """
     
     # Get comprehensive analysis
-    research_analysis = call_llm(
-        research_prompt, 
-        system_prompt=system_prompt,
-        temperature=0.3  # Lower temperature for factual accuracy
-    )
+    config = get_config()
+    if config.enable_cache:
+        research_analysis = cached_call(
+            "web_research", config.cache_ttl_seconds, [company_name, position or "", research_topics, "analysis"]
+        )(lambda: call_llm(
+            research_prompt,
+            system_prompt=system_prompt,
+            temperature=0.3,
+        ))()
+    else:
+        research_analysis = call_llm(
+            research_prompt,
+            system_prompt=system_prompt,
+            temperature=0.3,
+        )
     
     # Extract structured metrics
     metrics_prompt = f"""
@@ -83,11 +95,20 @@ def research_company(company_name, position=None, research_topics=None):
     """
     
     try:
-        metrics_json = call_llm_structured(
-            metrics_prompt,
-            response_format={"type": "json_object"},
-            system_prompt="You are a data analyst extracting structured metrics from company research."
-        )
+        if config.enable_cache:
+            metrics_json = cached_call(
+                "web_research", config.cache_ttl_seconds, [company_name, position or "", "metrics"]
+            )(lambda: call_llm_structured(
+                metrics_prompt,
+                response_format={"type": "json_object"},
+                system_prompt="You are a data analyst extracting structured metrics from company research.",
+            ))()
+        else:
+            metrics_json = call_llm_structured(
+                metrics_prompt,
+                response_format={"type": "json_object"},
+                system_prompt="You are a data analyst extracting structured metrics from company research."
+            )
         metrics = json.loads(metrics_json)
     except:
         # Fallback to default scores if parsing fails
