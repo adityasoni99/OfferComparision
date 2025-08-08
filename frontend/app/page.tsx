@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import axios from 'axios'
-import { useQuery } from '@tanstack/react-query'
+import OfferForm, { Offer } from '@/components/OfferForm'
+import PreferencesForm from '@/components/PreferencesForm'
+import Results from '@/components/Results'
 import { Bar, Radar } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -33,6 +35,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<any | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [offers, setOffers] = useState<Offer[]>([])
+  const [prefs, setPrefs] = useState<Record<string, any>>({})
 
   const runDemo = async () => {
     try {
@@ -42,6 +46,20 @@ export default function Home() {
       setData(res.data)
     } catch (e: any) {
       setError(e?.message || 'Failed to run demo')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const analyze = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const payload = { offers, user_preferences: prefs }
+      const res = await axios.post(`${API_BASE}/api/analyze`, payload)
+      setData(res.data)
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || e?.message || 'Failed to analyze')
     } finally {
       setLoading(false)
     }
@@ -73,58 +91,29 @@ export default function Home() {
       )}
 
       {!data && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="glass rounded-2xl p-6">
-            <h3 className="text-lg font-semibold">Compare Offers</h3>
-            <p className="text-slate-400 mt-2">Analyze salary, equity, bonus, and more across multiple offers.</p>
-          </div>
-          <div className="glass rounded-2xl p-6">
-            <h3 className="text-lg font-semibold">Market Intelligence</h3>
-            <p className="text-slate-400 mt-2">Benchmark against market data and cost-of-living adjustments.</p>
-          </div>
-          <div className="glass rounded-2xl p-6">
-            <h3 className="text-lg font-semibold">AI Recommendations</h3>
-            <p className="text-slate-400 mt-2">Get personalized guidance and executive summaries.</p>
+        <div className="space-y-6">
+          <OfferForm onChange={setOffers} />
+          <PreferencesForm onChange={(p) => setPrefs((prev) => ({ ...prev, ...p }))} />
+          <div className="flex gap-3">
+            <button
+              onClick={analyze}
+              disabled={loading}
+              className="rounded-lg px-4 py-2 bg-blue-600 hover:bg-blue-500 transition text-white"
+            >
+              {loading ? 'Analyzing...' : 'Analyze Offers'}
+            </button>
+            <button
+              onClick={runDemo}
+              disabled={loading}
+              className="rounded-lg px-4 py-2 bg-slate-800/70 hover:bg-slate-700/70 transition text-slate-100 border border-slate-700"
+            >
+              {loading ? 'Running Demo...' : 'Run Demo'}
+            </button>
           </div>
         </div>
       )}
 
-      {data && (
-        <section className="space-y-8">
-          <div className="glass rounded-2xl p-6">
-            <h2 className="text-xl font-semibold mb-3">Executive Summary</h2>
-            <p className="whitespace-pre-wrap text-slate-300">
-              {data.executive_summary || 'Summary unavailable'}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="glass rounded-2xl p-6">
-              <h3 className="text-lg font-semibold mb-4">Multi-Factor Radar</h3>
-              {radarData ? (
-                <Radar data={radarData} />
-              ) : (
-                <div className="text-slate-400">Radar chart unavailable</div>
-              )}
-            </div>
-            <div className="glass rounded-2xl p-6">
-              <h3 className="text-lg font-semibold mb-4">Overall Scores</h3>
-              {barData ? (
-                <Bar data={barData} />
-              ) : (
-                <div className="text-slate-400">Bar chart unavailable</div>
-              )}
-            </div>
-          </div>
-
-          <div className="glass rounded-2xl p-6">
-            <h3 className="text-lg font-semibold mb-4">Top Recommendation</h3>
-            <div className="text-slate-300">
-              {data?.final_report?.top_recommendation || '—'}
-            </div>
-          </div>
-        </section>
-      )}
+      {data && <Results data={data} />}
     </main>
   )
 }
