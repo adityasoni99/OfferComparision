@@ -481,9 +481,11 @@ def enrich_company_data(company_name: str, basic_data: Dict[str, Any] = None) ->
     # Try to get from database first
     db_data = get_company_data(company_name)
     if db_data:
-        # Merge with any additional basic data
+        # Merge with any additional basic data (do not drop provided keys)
         if basic_data:
-            db_data.update(basic_data)
+            merged = db_data.copy()
+            merged.update(basic_data)
+            return merged
         return db_data
     
     # Create default data structure
@@ -502,6 +504,11 @@ def enrich_company_data(company_name: str, basic_data: Dict[str, Any] = None) ->
         "ceo_approval": basic_data.get("ceo_approval", 75) if basic_data else 75,
         "data_source": "default_estimates"
     }
+    # Preserve basic_data passthrough fields like position_context/location
+    if basic_data:
+        for k, v in basic_data.items():
+            if k not in default_data:
+                default_data[k] = v
     
     return default_data
 
@@ -523,6 +530,7 @@ def search_companies(query: str, limit: int = 10) -> List[Dict[str, Any]]:
         if query_lower in company_name.lower():
             match_data = data.copy()
             match_data["name"] = company_name
+            match_data["match_score"] = round(0.8 + (len(query_lower) / max(1, len(company_name))) * 0.2, 2)
             matches.append(match_data)
     
     return matches[:limit]
@@ -544,15 +552,30 @@ def get_industry_benchmarks(industry: str = "Technology") -> Dict[str, float]:
     ]
     
     if not industry_companies:
-        return get_default_metrics()
+        return {"industry": industry, **get_default_metrics()}
     
     # Calculate averages
-    benchmarks = {}
+    benchmarks = {"industry": industry}
     metric_keys = list(industry_companies[0]["culture_metrics"].keys())
     
     for metric in metric_keys:
         total = sum(company["culture_metrics"][metric] for company in industry_companies)
         benchmarks[metric] = round(total / len(industry_companies), 1)
+    # Provide aggregated fields expected by tests
+    avg_culture = sum(c["culture_metrics"].get("company_outlook", 7.5) for c in industry_companies) / len(industry_companies)
+    avg_wlb = sum(c["culture_metrics"].get("work_life_balance", 7.0) for c in industry_companies) / len(industry_companies)
+    benchmarks["avg_culture_score"] = round(avg_culture, 1)
+    benchmarks["avg_wlb_score"] = round(avg_wlb, 1)
+    # Common benefits across companies in the industry
+    from collections import Counter
+    benefit_counter = Counter()
+    for company in industry_companies:
+        benefits = company.get("benefits", {})
+        for key, val in benefits.items():
+            if isinstance(val, str):
+                benefit_counter[key] += 1
+    common = [k for k, v in benefit_counter.most_common(5)]
+    benchmarks["common_benefits"] = common
     
     return benchmarks
 

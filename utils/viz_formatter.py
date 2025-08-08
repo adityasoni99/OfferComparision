@@ -16,14 +16,13 @@ def generate_colors(n_colors, alpha=0.8):
         alpha (float): Color opacity
     
     Returns:
-        list: List of RGBA color strings
+        list: List of hex color strings (e.g., #RRGGBB)
     """
     colors = []
     for i in range(n_colors):
-        hue = i / n_colors
-        rgb = colorsys.hsv_to_rgb(hue, 0.7, 0.9)
-        rgba = f"rgba({int(rgb[0]*255)}, {int(rgb[1]*255)}, {int(rgb[2]*255)}, {alpha})"
-        colors.append(rgba)
+        hue = i / max(1, n_colors)
+        r, g, b = colorsys.hsv_to_rgb(hue, 0.65, 0.95)
+        colors.append(f"#{int(r*255):02X}{int(g*255):02X}{int(b*255):02X}")
     return colors
 
 def format_radar_chart(offers_data, factors=None):
@@ -67,14 +66,14 @@ def format_radar_chart(offers_data, factors=None):
     colors = generate_colors(len(offers_data))
     
     for i, offer in enumerate(offers_data):
-        factor_scores = offer["score_breakdown"]["factor_scores"]
+        factor_scores = offer.get("score_breakdown", {}).get("factor_scores", offer.get("factor_scores", {}))
         data = [factor_scores.get(factor, 0) for factor in factors]
         
         dataset = {
-            "label": f"{offer['company']} - {offer['position']}",
+            "label": f"{offer.get('company', 'Company')} - {offer.get('position', '')}",
             "data": data,
             "borderColor": colors[i],
-            "backgroundColor": colors[i].replace("0.8", "0.2"),
+            "backgroundColor": colors[i],
             "pointBackgroundColor": colors[i],
             "pointBorderColor": "#fff",
             "pointHoverBackgroundColor": "#fff",
@@ -122,18 +121,18 @@ def format_bar_chart(offers_data, metric="total_score"):
     Returns:
         dict: Chart.js bar chart configuration
     """
-    labels = [f"{offer['company']}\n{offer['position']}" for offer in offers_data]
+    labels = [f"{offer.get('company', 'Company')}\n{offer.get('position', '')}" for offer in offers_data]
     
     if metric == "total_score":
         data = [offer["total_score"] for offer in offers_data]
         title = "Overall Offer Scores"
         y_max = 100
     elif metric == "total_compensation":
-        data = [offer["offer_data"].get("total_compensation", 0) for offer in offers_data]
+        data = [offer.get("offer_data", offer).get("total_compensation", 0) for offer in offers_data]
         title = "Total Compensation Comparison"
         y_max = None
     elif metric == "base_salary":
-        data = [offer["offer_data"].get("base_salary", 0) for offer in offers_data]
+        data = [offer.get("offer_data", offer).get("base_salary", 0) for offer in offers_data]
         title = "Base Salary Comparison"
         y_max = None
     else:
@@ -152,7 +151,7 @@ def format_bar_chart(offers_data, metric="total_score"):
                 "label": title,
                 "data": data,
                 "backgroundColor": colors,
-                "borderColor": [c.replace("0.8", "1.0") for c in colors],
+                "borderColor": colors,
                 "borderWidth": 1
             }]
         },
@@ -189,8 +188,8 @@ def format_compensation_breakdown(offers_data):
     charts = {}
     
     for offer in offers_data:
-        offer_id = offer["offer_id"]
-        offer_data = offer["offer_data"]
+        offer_id = offer.get("offer_id", offer.get("company", "offer"))
+        offer_data = offer.get("offer_data", offer)
         
         base_salary = offer_data.get("base_salary", 0)
         equity = offer_data.get("equity", 0)
@@ -252,8 +251,9 @@ def format_market_comparison_chart(offers_data):
     colors = generate_colors(len(offers_data))
     
     for i, offer in enumerate(offers_data):
-        base_percentile = offer["score_breakdown"]["factor_scores"].get("base_salary", 50)
-        total_percentile = offer["score_breakdown"]["factor_scores"].get("total_compensation", 50)
+        factor_scores = offer.get("score_breakdown", {}).get("factor_scores", offer.get("factor_scores", {}))
+        base_percentile = factor_scores.get("base_salary", 50)
+        total_percentile = factor_scores.get("total_compensation", 50)
         
         dataset = {
             "label": f"{offer['company']}",
@@ -262,7 +262,7 @@ def format_market_comparison_chart(offers_data):
                 "y": total_percentile
             }],
             "backgroundColor": colors[i],
-            "borderColor": colors[i].replace("0.8", "1.0"),
+            "borderColor": colors[i],
             "pointRadius": 8
         }
         datasets.append(dataset)
@@ -404,8 +404,8 @@ def format_comparison_table(offers_data):
     rows = []
     
     for offer in offers_data:
-        offer_data = offer["offer_data"]
-        scores = offer["score_breakdown"]["factor_scores"]
+        offer_data = offer.get("offer_data", offer)
+        scores = offer.get("score_breakdown", {}).get("factor_scores", offer.get("factor_scores", {}))
         
         row = [
             offer.get("rank", "—"),
@@ -425,6 +425,7 @@ def format_comparison_table(offers_data):
     return {
         "headers": headers,
         "rows": rows,
+        "best_values": _find_best_values(rows, offers_data),
         "best_in_column": _find_best_values(rows, offers_data)
     }
 

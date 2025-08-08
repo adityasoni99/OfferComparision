@@ -349,7 +349,7 @@ def customize_weights(user_priorities):
     weights = DEFAULT_WEIGHTS.copy()
     
     # Apply user customizations
-    if "salary_focused" in user_priorities:
+    if user_priorities.get("salary_focused"):
         weights["base_salary"] = 0.35
         weights["total_compensation"] = 0.25
         weights["equity_upside"] = 0.20
@@ -358,7 +358,7 @@ def customize_weights(user_priorities):
         weights["company_culture"] = 0.03
         weights["benefits_quality"] = 0.02
     
-    elif "growth_focused" in user_priorities:
+    elif user_priorities.get("growth_focused"):
         weights["career_growth"] = 0.30
         weights["equity_upside"] = 0.25
         weights["company_culture"] = 0.15
@@ -367,7 +367,7 @@ def customize_weights(user_priorities):
         weights["work_life_balance"] = 0.03
         weights["benefits_quality"] = 0.02
     
-    elif "balance_focused" in user_priorities:
+    elif user_priorities.get("balance_focused"):
         weights["work_life_balance"] = 0.35
         weights["company_culture"] = 0.20
         weights["location_preference"] = 0.15
@@ -387,6 +387,10 @@ def customize_weights(user_priorities):
         total_weight = sum(weights.values())
         if total_weight > 0:
             weights = {k: v/total_weight for k, v in weights.items()}
+    # Ensure weights sum to 1.0
+    total_weight = sum(weights.values())
+    if total_weight > 0:
+        weights = {k: v/total_weight for k, v in weights.items()}
     
     return weights
 
