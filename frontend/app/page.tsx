@@ -93,7 +93,7 @@ export default function Home() {
       {!data && (
         <div className="space-y-6">
           <OfferForm onChange={setOffers} />
-          <PreferencesForm onChange={(p) => setPrefs((prev) => ({ ...prev, ...p }))} />
+          <PreferencesForm onChange={setPrefs} />
           <div className="flex gap-3">
             <button
               onClick={analyze}
