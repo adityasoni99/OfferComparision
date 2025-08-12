@@ -1,121 +1,366 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import axios from 'axios'
-import OfferForm, { Offer } from '@/components/OfferForm'
-import PreferencesForm from '@/components/PreferencesForm'
-import Results from '@/components/Results'
-import { Bar, Radar } from 'react-chartjs-2'
-import {
-  Chart as ChartJS,
-  RadialLinearScale,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Tooltip,
-  Legend,
-} from 'chart.js'
+import { 
+  PlusIcon, 
+  DocumentTextIcon, 
+  CogIcon, 
+  ChartBarIcon,
+  SparklesIcon,
+  CloudArrowUpIcon,
+  XMarkIcon,
+  AdjustmentsHorizontalIcon
+} from '@heroicons/react/24/outline'
 
-ChartJS.register(
-  RadialLinearScale,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Tooltip,
-  Legend
-)
+import ProfileManager from '@/components/ProfileManager'
+import AdvancedOfferForm from '@/components/AdvancedOfferForm'
+import PreferencesPanel from '@/components/PreferencesPanel'
+import OfferCards from '@/components/OfferCards'
+import AnalysisResults from '@/components/AnalysisResults'
+import { Offer, UserPreferences } from '@/types'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000'
-
-export default function Home() {
-  const [loading, setLoading] = useState(false)
-  const [data, setData] = useState<any | null>(null)
-  const [error, setError] = useState<string | null>(null)
+export default function OfferComparePage() {
   const [offers, setOffers] = useState<Offer[]>([])
-  const [prefs, setPrefs] = useState<Record<string, any>>({})
+  const [selectedOffers, setSelectedOffers] = useState<string[]>([])
+  const [preferences, setPreferences] = useState<UserPreferences>({
+    salary_weight: 0.30,
+    equity_weight: 0.20,
+    wlb_weight: 0.20,
+    growth_weight: 0.15,
+    culture_weight: 0.10,
+    benefits_weight: 0.05
+  })
+  const [analysisResults, setAnalysisResults] = useState(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [showPreferencesModal, setShowPreferencesModal] = useState(false)
+  const [showOfferModal, setShowOfferModal] = useState(false)
 
-  const runDemo = async () => {
+  // Load data from localStorage on component mount
+  useEffect(() => {
+    const savedOffers = localStorage.getItem('offercompare_offers')
+    const savedPreferences = localStorage.getItem('offercompare_preferences')
+    const savedSelectedOffers = localStorage.getItem('offercompare_selected_offers')
+    
+    if (savedOffers) {
+      try {
+        const parsedOffers = JSON.parse(savedOffers)
+        if (Array.isArray(parsedOffers)) {
+          setOffers(parsedOffers)
+        }
+      } catch (error) {
+        console.error('Error loading saved offers:', error)
+      }
+    }
+    
+    if (savedPreferences) {
+      try {
+        const parsedPreferences = JSON.parse(savedPreferences)
+        if (parsedPreferences && typeof parsedPreferences === 'object') {
+          setPreferences(prevPrefs => ({ ...prevPrefs, ...parsedPreferences }))
+        }
+      } catch (error) {
+        console.error('Error loading saved preferences:', error)
+      }
+    }
+    
+    if (savedSelectedOffers) {
+      try {
+        const parsedSelected = JSON.parse(savedSelectedOffers)
+        if (Array.isArray(parsedSelected)) {
+          setSelectedOffers(parsedSelected)
+        }
+      } catch (error) {
+        console.error('Error loading saved selected offers:', error)
+      }
+    }
+  }, [])
+
+  // Save offers to localStorage whenever they change
+  useEffect(() => {
+    if (offers.length > 0) {
+      localStorage.setItem('offercompare_offers', JSON.stringify(offers))
+    }
+  }, [offers])
+
+  // Save preferences to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('offercompare_preferences', JSON.stringify(preferences))
+  }, [preferences])
+
+  // Save selected offers to localStorage whenever they change
+  useEffect(() => {
+    if (selectedOffers.length > 0) {
+      localStorage.setItem('offercompare_selected_offers', JSON.stringify(selectedOffers))
+    }
+  }, [selectedOffers])
+
+  const handleAddOffer = useCallback((newOffer: Offer) => {
+    setOffers(prev => [...prev, { ...newOffer, id: Date.now().toString() }])
+    setShowOfferModal(false)
+  }, [])
+
+  const handleRemoveOffer = useCallback((offerId: string) => {
+    setOffers(prev => prev.filter(offer => offer.id !== offerId))
+    setSelectedOffers(prev => prev.filter(id => id !== offerId))
+  }, [])
+
+  const handleToggleSelection = useCallback((offerId: string) => {
+    setSelectedOffers(prev => 
+      prev.includes(offerId) 
+        ? prev.filter(id => id !== offerId)
+        : [...prev, offerId]
+    )
+  }, [])
+
+  const runAnalysis = async () => {
+    if (selectedOffers.length < 2) {
+      alert('Please select at least 2 offers to compare')
+      return
+    }
+
+    setIsAnalyzing(true)
     try {
-      setLoading(true)
-      setError(null)
-      const res = await axios.get(`${API_BASE}/api/demo`)
-      setData(res.data)
-    } catch (e: any) {
-      setError(e?.message || 'Failed to run demo')
+      const selectedOfferData = offers.filter(offer => selectedOffers.includes(offer.id))
+      const response = await axios.post('http://localhost:8001/api/analyze', {
+        offers: selectedOfferData,
+        user_preferences: preferences
+      })
+      setAnalysisResults(response.data)
+    } catch (error) {
+      console.error('Analysis failed:', error)
+      alert('Analysis failed. Please try again.')
     } finally {
-      setLoading(false)
+      setIsAnalyzing(false)
     }
   }
 
-  const analyze = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const payload = { offers, user_preferences: prefs }
-      const res = await axios.post(`${API_BASE}/api/analyze`, payload)
-      setData(res.data)
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || 'Failed to analyze')
-    } finally {
-      setLoading(false)
+  const handleClearAllData = useCallback(() => {
+    if (confirm('Are you sure you want to clear all saved offers and preferences? This action cannot be undone.')) {
+      localStorage.removeItem('offercompare_offers')
+      localStorage.removeItem('offercompare_preferences')
+      localStorage.removeItem('offercompare_selected_offers')
+      setOffers([])
+      setSelectedOffers([])
+      setPreferences({
+        salary_weight: 0.30,
+        equity_weight: 0.20,
+        wlb_weight: 0.20,
+        growth_weight: 0.15,
+        culture_weight: 0.10,
+        benefits_weight: 0.05
+      })
+      setAnalysisResults(null)
+      alert('All data cleared successfully!')
     }
-  }
-
-  const radarData = data?.visualization_data?.radar_chart?.data
-  const barData = data?.visualization_data?.overall_scores?.data
+  }, [])
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-10">
-      <header className="flex items-center justify-between mb-10">
-        <div>
-          <h1 className="text-3xl md:text-5xl font-bold tracking-tight bg-gradient-to-r from-blue-300 to-cyan-300 bg-clip-text text-transparent">
-            OfferCompare Pro
-          </h1>
-          <p className="text-slate-400 mt-2">AI-powered job offer analysis and decision support</p>
-        </div>
-        <button
-          onClick={runDemo}
-          disabled={loading}
-          className="rounded-lg px-5 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 transition text-white font-medium shadow-lg"
-        >
-          {loading ? 'Running Demo...' : 'Run Demo'}
-        </button>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Header */}
+      <header className="bg-slate-800/90 backdrop-blur-lg border-b border-slate-700 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-3">
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-2 rounded-lg">
+                <ChartBarIcon className="h-6 w-6 text-white" />
+              </div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+                OfferCompare Pro
+              </h1>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowProfileModal(true)}
+                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-slate-200 bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 rounded-lg transition-colors backdrop-blur-sm"
+              >
+                <DocumentTextIcon className="h-4 w-4" />
+                <span>Upload Resume</span>
+              </button>
+              
+              <button
+                onClick={() => setShowPreferencesModal(true)}
+                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-slate-200 bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 rounded-lg transition-colors backdrop-blur-sm"
+              >
+                <AdjustmentsHorizontalIcon className="h-4 w-4" />
+                <span>Preferences</span>
+              </button>
+              
 
-      {error && (
-        <div className="glass rounded-lg p-4 text-red-300 mb-6">{error}</div>
-      )}
-
-      {!data && (
-        <div className="space-y-6">
-          <OfferForm onChange={setOffers} />
-          <PreferencesForm onChange={setPrefs} />
-          <div className="flex gap-3">
-            <button
-              onClick={analyze}
-              disabled={loading}
-              className="rounded-lg px-4 py-2 bg-blue-600 hover:bg-blue-500 transition text-white"
-            >
-              {loading ? 'Analyzing...' : 'Analyze Offers'}
-            </button>
-            <button
-              onClick={runDemo}
-              disabled={loading}
-              className="rounded-lg px-4 py-2 bg-slate-800/70 hover:bg-slate-700/70 transition text-slate-100 border border-slate-700"
-            >
-              {loading ? 'Running Demo...' : 'Run Demo'}
-            </button>
+            </div>
           </div>
         </div>
-      )}
+      </header>
 
-      {data && <Results data={data} />}
-    </main>
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Hero Section */}
+        {offers.length === 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-16 mb-8 bg-gradient-to-r from-slate-800/50 to-slate-700/50 rounded-2xl shadow-xl border border-slate-600 backdrop-blur-sm"
+          >
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 rounded-2xl inline-block mb-6">
+              <SparklesIcon className="h-12 w-12 text-white" />
+            </div>
+            <h2 className="text-4xl font-bold text-white mb-4">
+              Make Smarter Career Decisions
+            </h2>
+            <p className="text-xl text-slate-300 mb-8 max-w-3xl mx-auto">
+              Compare job offers with advanced market analysis, cost of living adjustments, 
+              personalized weighting, and AI-powered recommendations. Get real purchasing power 
+              comparisons across different locations.
+            </p>
+            <button
+              onClick={() => setShowOfferModal(true)}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all transform hover:scale-105 shadow-lg"
+            >
+              Start Comparing Offers
+            </button>
+          </motion.div>
+        )}
+
+        {/* Offers Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Offers */}
+          <div className="lg:col-span-2">
+            <div className="bg-slate-800/50 rounded-2xl shadow-xl border border-slate-600 p-6 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-white">Your Job Offers</h3>
+                <button
+                  onClick={() => setShowOfferModal(true)}
+                  className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-all"
+                >
+                  <PlusIcon className="h-5 w-5" />
+                  <span>Add New Offer</span>
+                </button>
+              </div>
+
+              {offers.length === 0 ? (
+                <div className="text-center py-12 border-2 border-dashed border-slate-600 rounded-xl">
+                  <CloudArrowUpIcon className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                  <p className="text-slate-400 mb-4">No offers added yet</p>
+                  <button
+                    onClick={() => setShowOfferModal(true)}
+                    className="text-blue-400 hover:text-blue-300 font-medium"
+                  >
+                    Add your first offer
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <OfferCards 
+                    offers={offers}
+                    selectedOffers={selectedOffers}
+                    onToggleSelection={handleToggleSelection}
+                    onRemoveOffer={handleRemoveOffer}
+                  />
+                  
+                  <div className="mt-6 flex items-center justify-between">
+                    <p className="text-sm text-slate-400">
+                      {selectedOffers.length === 0 ? '0 offers selected' : 
+                       selectedOffers.length === 1 ? '1 offer selected' :
+                       `${selectedOffers.length} offers selected`}
+                      {selectedOffers.length < 2 && ' • Select 2+ offers to compare'}
+                    </p>
+                    
+                    <button
+                      onClick={runAnalysis}
+                      disabled={selectedOffers.length < 2 || isAnalyzing}
+                      className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white px-6 py-3 rounded-lg font-semibold transition-all disabled:cursor-not-allowed"
+                    >
+                      {isAnalyzing ? 'Analyzing...' : 'Compare Selected Offers'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column - Quick Actions */}
+          <div className="space-y-6">
+            <div className="bg-slate-800/50 rounded-2xl shadow-xl border border-slate-600 p-6 backdrop-blur-sm">
+              <h4 className="text-lg font-semibold text-white mb-4">👤 Your Profile</h4>
+              <button
+                onClick={() => setShowProfileModal(true)}
+                className="w-full text-left p-4 border-2 border-dashed border-slate-600 rounded-lg hover:border-blue-400 hover:bg-slate-700/50 transition-colors"
+              >
+                <DocumentTextIcon className="h-8 w-8 text-slate-400 mb-2" />
+                <p className="text-sm font-medium text-slate-200">Upload Your Resume</p>
+                <p className="text-xs text-slate-400">Help us provide better recommendations</p>
+              </button>
+            </div>
+
+            <div className="bg-slate-800/50 rounded-2xl shadow-xl border border-slate-600 p-6 backdrop-blur-sm">
+              <h4 className="text-lg font-semibold text-white mb-4">⚙️ Preferences</h4>
+              <button
+                onClick={() => setShowPreferencesModal(true)}
+                className="w-full text-left p-4 border border-slate-600 rounded-lg hover:border-blue-400 hover:bg-slate-700/50 transition-colors"
+              >
+                <CogIcon className="h-8 w-8 text-slate-400 mb-2" />
+                <p className="text-sm font-medium text-slate-200">Set Your Priorities</p>
+                <p className="text-xs text-slate-400">Customize factor weightings</p>
+              </button>
+            </div>
+
+            <div className="bg-slate-800/50 rounded-2xl shadow-xl border border-slate-600 p-6 backdrop-blur-sm">
+              <h4 className="text-lg font-semibold text-white mb-4">💾 Data Management</h4>
+              <div className="space-y-3">
+                <button
+                  onClick={handleClearAllData}
+                  className="w-full text-left p-3 border border-red-600/50 rounded-lg hover:border-red-400 hover:bg-red-900/20 transition-colors"
+                >
+                  <p className="text-sm font-medium text-red-300">Clear All Data</p>
+                  <p className="text-xs text-red-400">Reset offers and preferences</p>
+                </button>
+                
+                <div className="text-center text-slate-400 text-xs">
+                  💡 Your data is automatically saved in browser storage
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Analysis Results */}
+        {analysisResults && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8"
+          >
+            <AnalysisResults results={analysisResults} />
+          </motion.div>
+        )}
+      </main>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <ProfileManager onClose={() => setShowProfileModal(false)} />
+        )}
+        
+        {showPreferencesModal && (
+          <PreferencesPanel 
+            preferences={preferences}
+            onSave={setPreferences}
+            onClose={() => setShowPreferencesModal(false)}
+          />
+        )}
+        
+        {showOfferModal && (
+          <AdvancedOfferForm 
+            onSubmit={handleAddOffer}
+            onClose={() => setShowOfferModal(false)}
+          />
+        )}
+
+
+      </AnimatePresence>
+    </div>
   )
 }
-
-

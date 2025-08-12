@@ -200,7 +200,7 @@ class MarketResearchNode(AsyncBatchNode):
                 offer["company_db_data"] = research_data["company_db_data"]
                 offer["enriched_data"] = research_data["enriched_data"]
         
-        print(f"✅ Market research completed for {len(exec_res)} companies")
+        print(f"✅ Market research completed for {len(exec_res_list)} companies")
         return "default"
 
 class COLAdjustmentNode(BatchNode):
@@ -227,41 +227,32 @@ class COLAdjustmentNode(BatchNode):
         
         return adjustment_items
     
-    def exec(self, item):
-        """Calculate cost of living adjustments. Accepts a single item or a list; always returns a list."""
-        def process(single_item):
-            print(f"\n💰 Calculating cost of living adjustment for {single_item['company']} ({single_item['location']})...")
-            salary_adjustment = calculate_col_adjustment(
-                single_item["base_salary"],
-                single_item["location"],
-                single_item["base_location"]
-            )
-            total_comp_adjustment = calculate_col_adjustment(
-                single_item["total_compensation"],
-                single_item["location"],
-                single_item["base_location"]
-            )
-            location_insights = get_location_insights(single_item["location"])
-            return {
-                "offer_id": single_item["offer_id"],
-                "salary_adjustment": salary_adjustment,
-                "total_comp_adjustment": total_comp_adjustment,
-                "location_insights": location_insights
-            }
+    def exec(self, adjustment_item):
+        """Calculate cost of living adjustments for a single offer."""
+        print(f"\n💰 Calculating cost of living adjustment for {adjustment_item['company']} ({adjustment_item['location']})...")
         
-        if isinstance(item, list):
-            return [process(i) for i in item]
-        return [process(item)]
+        salary_adjustment = calculate_col_adjustment(
+            adjustment_item["base_salary"],
+            adjustment_item["location"],
+            adjustment_item["base_location"]
+        )
+        total_comp_adjustment = calculate_col_adjustment(
+            adjustment_item["total_compensation"],
+            adjustment_item["location"],
+            adjustment_item["base_location"]
+        )
+        location_insights = get_location_insights(adjustment_item["location"])
+        
+        return {
+            "offer_id": adjustment_item["offer_id"],
+            "salary_adjustment": salary_adjustment,
+            "total_comp_adjustment": total_comp_adjustment,
+            "location_insights": location_insights
+        }
     
-    def post(self, shared, prep_res, exec_res):
+    def post(self, shared, prep_res, exec_res_list):
         """Update offers with cost of living adjustments."""
-        flat_results = []
-        for r in exec_res:
-            if isinstance(r, list):
-                flat_results.extend(r)
-            else:
-                flat_results.append(r)
-        adjustment_lookup = {r.get("offer_id"): r for r in flat_results if isinstance(r, dict)}
+        adjustment_lookup = {r.get("offer_id"): r for r in exec_res_list if isinstance(r, dict)}
         
         for offer in shared["offers"]:
             if offer["id"] in adjustment_lookup:
@@ -332,9 +323,14 @@ class MarketBenchmarkingNode(AsyncBatchNode):
         
         ai_analysis = await ai_market_analysis_async(
             benchmark_item["position"],
+            benchmark_item["company"],
             benchmark_item["location"],
-            benchmark_item["base_salary"],
-            benchmark_item["years_experience"]
+            {
+                "base_salary": benchmark_item["base_salary"],
+                "equity_value": benchmark_item["equity"],
+                "bonus": benchmark_item["bonus"],
+                "total_compensation": benchmark_item["total_compensation"]
+            }
         )
         
         # Include alias keys expected by tests
@@ -663,6 +659,33 @@ class ReportGenerationNode(Node):
         offers = data["offers"]
         comparison_results = data["comparison_results"]
         
+        # Enrich offer rankings with AI recommendations
+        ranked_offers = comparison_results.get("ranked_offers", [])
+        enriched_rankings = []
+        
+        for ranking in ranked_offers:
+            # Find the corresponding offer to get the AI recommendation
+            offer_data = ranking.get("offer_data", {})
+            offer_id = ranking.get("offer_id")
+            
+            # Look for AI recommendation in the original offers array
+            ai_recommendation = "No specific recommendation available"
+            for offer in offers:
+                if offer.get("id") == offer_id:
+                    ai_recommendation = offer.get("ai_recommendation", "No specific recommendation available")
+                    break
+            
+            # Create enriched ranking with AI recommendation
+            enriched_ranking = {
+                "offer_id": ranking.get("offer_id"),
+                "company": ranking.get("company"),
+                "position": ranking.get("position"),
+                "total_score": ranking.get("total_score"),
+                "rank": ranking.get("rank"),
+                "ai_recommendation": ai_recommendation
+            }
+            enriched_rankings.append(enriched_ranking)
+        
         report = {
             "report_type": "OfferCompare Pro Analysis",
             "analysis_date": "2024-01-01",
@@ -670,7 +693,7 @@ class ReportGenerationNode(Node):
             "top_recommendation": comparison_results.get("top_offer", {}).get("company", "N/A"),
             "detailed_analysis": data["ai_analysis"],
             "decision_framework": data["decision_framework"],
-            "offer_rankings": comparison_results.get("ranked_offers", []),
+            "offer_rankings": enriched_rankings,
             "visualization_summary": data["visualization_data"].get("summary_stats", {})
         }
         
